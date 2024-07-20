@@ -32,10 +32,7 @@ const jobQueues = new Map<string, Bull.Queue<JobData>>();
 
 // Function to process a job
 async function processJob(job: Bull.Job<JobData>) {
-  console.log(`staring processing job`);
   const { url, method, headers, body } = job.data.payload;
-
-  console.log(`Processing job for ${url}`);
 
   try {
     const response = await fetch(url, {
@@ -44,7 +41,6 @@ async function processJob(job: Bull.Job<JobData>) {
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    console.log(`Job completed for ${url}: ${response.status}`);
     return { status: response.status, url };
   } catch (error) {
     console.error(`Error processing job for ${url}:`, error);
@@ -59,25 +55,20 @@ const jobHash = (email: string, payload: JobData["payload"]) => {
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
 app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
-  console.log(`Received job request`, REDIS_URL);
   const jobData = c.req.valid("json");
 
   const { email, payload, concurrency } = jobData;
 
   const hash = jobHash(email, payload);
 
-  console.log(`Job hash: ${hash}`);
-
   // Get or create a job queue for the URL
   let queue = jobQueues.get(hash);
   if (!queue) {
-    console.log(`Creating queue for ${hash}`);
     queue = new Bull<JobData>(hash, REDIS_URL);
-    queue.process(hash, concurrency, processJob);
+    queue.process(concurrency, processJob);
     jobQueues.set(hash, queue);
   }
 
-  console.log(`Adding job to queue for ${hash}`);
   // Add the job to the queue
   const job = await queue.add(jobData, {
     delay: jobData.delay * 1000,
@@ -118,7 +109,7 @@ app.get("/health", async (c) => {
 });
 
 // Start the server
-const port = 3000;
+const port = parseInt(process.env.PORT || "3000");
 console.log(`Server is running on http://localhost:${port}`);
 
 serve({
