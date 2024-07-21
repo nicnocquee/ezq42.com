@@ -7,6 +7,7 @@ services:
       - REDIS_JOBS_URL=redis://redis_jobs:6379
       - "SUPER_SECRET_KEY=${SUPER_SECRET_KEY}"
       - "GUMROAD_PRODUCT_ID=${GUMROAD_PRODUCT_ID}"
+      - "GUMROAD_VERIFY_LICENSE_URL=${GUMROAD_VERIFY_LICENSE_URL}"
     depends_on:
       - redis_jobs
       - redis_app
