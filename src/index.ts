@@ -104,7 +104,12 @@ const jobHash = (
 app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
   const jobData = c.req.valid("json");
 
-  const { email, payload, concurrency } = jobData;
+  const { email, payload, concurrency, secretKey } = jobData;
+
+  const isValid = await checkApiKey(email, secretKey || "");
+  if (!isValid) {
+    return c.json({ error: "Invalid API key" }, 401);
+  }
 
   const hash = jobHash(email, payload, concurrency);
 
@@ -323,3 +328,101 @@ export async function getJobCounts(): Promise<JobCounts> {
     throw error;
   }
 }
+
+const checkApiKey = async (email: string, apiKey: string) => {
+  if (!apiKey) {
+    return false;
+  }
+  const existingKey = await redisAppClient.get(`api-key:${email}`);
+  if (existingKey === apiKey) {
+    return true;
+  } else {
+    // https://help.gumroad.com/article/76-license-keys
+    const url = "https://api.gumroad.com/v2/licenses/verify";
+    const params = new URLSearchParams({
+      product_id: process.env.GUMROAD_PRODUCT_ID || "",
+      license_key: apiKey,
+    });
+
+    const response = await fetch(url, {
+      method: "POST",
+      body: params,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+
+    const data: any = await response.json();
+    const {
+      status,
+      purchase: {
+        subscription_ended_at,
+        subscription_cancelled_at,
+        subscription_failed_at,
+      },
+    } = data;
+    if (
+      data.status &&
+      !subscription_ended_at &&
+      !subscription_cancelled_at &&
+      !subscription_failed_at
+    ) {
+      await redisAppClient.set(`api-key:${email}`, apiKey);
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/*
+License object from gumroad:
+
+{
+  "success": true,
+  "uses": 3,
+  "purchase": {
+    "seller_id": "kL0psVL2admJSYRNs-OCMg==",
+    "product_id": "32-nPAicqbLj8B_WswVlMw==",
+    "product_name": "licenses demo product",
+    "permalink": "QMGY",
+    "product_permalink": "https://sahil.gumroad.com/l/pencil",
+    "email": "customer@example.com",
+    "price": 0,
+    "gumroad_fee": 0,
+    "currency": "usd",
+    "quantity": 1,
+    "discover_fee_charged": false,
+    "can_contact": true,
+    "referrer": "direct",
+    "card": {
+      "expiry_month": null,
+      "expiry_year": null,
+      "type": null,
+      "visual": null
+    },
+    "order_number": 524459935,
+    "sale_id": "FO8TXN-dbxYaBdahG97Y-Q==",
+    "sale_timestamp": "2021-01-05T19:38:56Z",
+    "purchaser_id": "5550321502811",
+    "subscription_id": "GDzW4_aBdQc-o7Gbjng7lw==",
+    "variants": "",
+    "license_key": "85DB562A-C11D4B06-A2335A6B-8C079166",
+    "is_multiseat_license": false,
+    "ip_country": "United States",
+    "recurrence": "monthly",
+    "is_gift_receiver_purchase": false,
+    "refunded": false,
+    "disputed": false,
+    "dispute_won": false,
+    "id": "FO8TXN-dvaYbBbahG97a-Q==",
+    "created_at": "2021-01-05T19:38:56Z",
+    "custom_fields": [],
+    "chargebacked": false,
+    "subscription_ended_at": null,
+    "subscription_cancelled_at": null,
+    "subscription_failed_at": null
+  }
+}
+
+*/
