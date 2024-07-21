@@ -16,7 +16,7 @@ Check out the example project [here](https://github.com/nicnocquee/ezq42example)
 Free use (rate limit is 6 requests per minute):
 
 ```bash
-curl -X POST "https://ezq42.com/api/v1/job" \
+curl -X POST "https://app.ezq42.com/api/v1/job" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "hi@example.com",
@@ -31,10 +31,10 @@ Note: The `email` field is mandatory.
 Paid use (rate limit is 120 requests per minute):
 
 - Get the license key from [Gumroad](https://nicopr.gumroad.com/l/gphro)
-- Activate the key by sending a POST request to `https://ezq42.com/activate-key`
+- Activate the key by sending a POST request to `https://app.ezq42.com/activate-key`
 
 ```bash
-curl -X POST "https://ezq42.com/activate-key" \
+curl -X POST "https://app.ezq42.com/activate-key" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "hi@example.com",
@@ -45,7 +45,7 @@ curl -X POST "https://ezq42.com/activate-key" \
 - Use the license key in the `apiKey` field
 
 ```bash
-curl -X POST "https://ezq42.com/api/v1/job" \
+curl -X POST "https://app.ezq42.com/api/v1/job" \
   -H "Content-Type: application/json" \
   -d '{
     "email": "hi@example.com",
