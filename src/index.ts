@@ -270,6 +270,7 @@ export async function getJobCounts(): Promise<JobCounts> {
   const monthKey = `jobs:month:${month}`;
   const totalKey = "jobs:total";
 
+  console.log(`Getting job counts for ${dayKey}, ${weekKey}, ${monthKey}`);
   try {
     const results = await redisAppClient
       .multi()
@@ -278,6 +279,8 @@ export async function getJobCounts(): Promise<JobCounts> {
       .get(monthKey)
       .get(totalKey)
       .exec();
+
+    console.log(results);
 
     if (
       !results ||
