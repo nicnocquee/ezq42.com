@@ -11,6 +11,10 @@ import "dotenv/config";
 
 const REDIS_JOBS_URL = process.env.REDIS_JOBS_URL || "redis://localhost:6379";
 const REDIS_APP_URL = process.env.REDIS_APP_URL || "redis://localhost:6379";
+const GUMROAD_PRODUCT_ID = process.env.GUMROAD_PRODUCT_ID || "";
+const SUPER_SECRET_KEY = process.env.SUPER_SECRET_KEY || "";
+const PORT = process.env.PORT || "3000";
+const GUMROAD_VERIFY_LICENSE_URL = process.env.GUMROAD_VERIFY_LICENSE_URL || "";
 
 const redisAppClient = createClient({ url: REDIS_APP_URL });
 redisAppClient.on("error", (err) => console.log("Redis App Client Error", err));
@@ -38,7 +42,7 @@ const defaultConfig = {
     if (c.req.path !== "/api/v1/job") return true;
     const body = await c.req.json();
     const secretKey = body?.secretKey || "";
-    const skip = secretKey == process.env.SUPER_SECRET_KEY;
+    const skip = secretKey === SUPER_SECRET_KEY;
     if (skip) console.log(`Skipping rate limit because of super secret key`);
     return skip;
   },
@@ -57,7 +61,7 @@ const paidLimiter = rateLimiter({
     if (c.req.path !== "/api/v1/job") return true;
     const body = await c.req.json();
     const secretKey = body?.secretKey || "";
-    const skip = secretKey == process.env.SUPER_SECRET_KEY;
+    const skip = secretKey === SUPER_SECRET_KEY;
     if (skip) console.log(`Skipping rate limit because of super secret key`);
     return skip;
   },
@@ -190,10 +194,18 @@ app.get("/api/v1/queues/count", async (c) => {
 });
 
 app.get("/health", async (c) => {
+  if (!GUMROAD_PRODUCT_ID) {
+    console.error("GUMROAD_PRODUCT_ID is not set");
+    return c.status(500);
+  }
+
   const healthQueue = new Bull<JobData>("health", REDIS_JOBS_URL);
   await healthQueue.process("health", 1, async (job) => {
     return { status: "ok" };
   });
+
+  await redisAppClient.set("health:last-updated", new Date().toISOString());
+
   return c.json({ status: "ok" });
 });
 
@@ -203,7 +215,7 @@ app.get("/total-jobs", async (c) => {
 });
 
 // Start the server
-const port = parseInt(process.env.PORT || "3000");
+const port = parseInt(PORT || "3000");
 
 serve(
   {
@@ -362,14 +374,17 @@ const checkApiKey = async (email: string, apiKey: string) => {
   if (!apiKey) {
     return false;
   }
+  if (apiKey === SUPER_SECRET_KEY) {
+    return true;
+  }
   const existingKey = await redisAppClient.get(`api-key:${email}`);
   if (existingKey === apiKey) {
     return true;
   } else {
     // https://help.gumroad.com/article/76-license-keys
-    const url = "https://api.gumroad.com/v2/licenses/verify";
+    const url = GUMROAD_VERIFY_LICENSE_URL;
     const params = new URLSearchParams({
-      product_id: process.env.GUMROAD_PRODUCT_ID || "",
+      product_id: GUMROAD_PRODUCT_ID || "",
       license_key: apiKey,
     });
 

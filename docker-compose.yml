@@ -6,6 +6,7 @@ services:
       - REDIS_APP_URL=redis://redis_app:6379
       - REDIS_JOBS_URL=redis://redis_jobs:6379
       - "SUPER_SECRET_KEY=${SUPER_SECRET_KEY}"
+      - "GUMROAD_PRODUCT_ID=${GUMROAD_PRODUCT_ID}"
     depends_on:
       - redis_jobs
       - redis_app
