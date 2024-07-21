@@ -184,19 +184,19 @@ serve(
 interface JobCounts {
   day: {
     count: number;
-    lastUpdated: string;
+    range: string;
   };
   week: {
     count: number;
-    lastUpdated: string;
+    range: string;
   };
   month: {
     count: number;
-    lastUpdated: string;
+    range: string;
   };
   total: {
     count: number;
-    lastUpdated: string;
+    range: string;
   };
 }
 
@@ -292,18 +292,6 @@ export async function getJobCounts(): Promise<JobCounts> {
       .get(totalKey)
       .exec();
 
-    console.log(results);
-
-    if (
-      !results ||
-      results.some(
-        (result) =>
-          result === null || result === undefined || !Array.isArray(result)
-      )
-    ) {
-      throw new Error("Failed to get counters");
-    }
-
     const [day, week, month, total] = results as [
       string,
       string,
@@ -314,19 +302,19 @@ export async function getJobCounts(): Promise<JobCounts> {
     return {
       day: {
         count: parseInt(day),
-        lastUpdated: dayKey,
+        range: day,
       },
       week: {
         count: parseInt(week),
-        lastUpdated: weekKey,
+        range: week,
       },
       month: {
         count: parseInt(month),
-        lastUpdated: monthKey,
+        range: month,
       },
       total: {
         count: parseInt(total),
-        lastUpdated: totalKey,
+        range: "all",
       },
     };
   } catch (error) {
