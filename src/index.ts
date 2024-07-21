@@ -6,9 +6,14 @@ import { serve } from "@hono/node-server";
 import { createHash } from "node:crypto";
 import { rateLimiter } from "hono-rate-limiter";
 import { getConnInfo } from "@hono/node-server/conninfo";
+import { createClient } from "redis";
 import "dotenv/config";
 
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const REDIS_JOBS_URL = process.env.REDIS_JOBS_URL || "redis://localhost:6379";
+const REDIS_APP_URL = process.env.REDIS_APP_URL || "redis://localhost:6379";
+
+const redisAppClient = createClient({ url: REDIS_APP_URL });
+redisAppClient.on("error", (err) => console.log("Redis App Client Error", err));
 
 const app = new Hono();
 
@@ -30,6 +35,7 @@ const limiter = rateLimiter({
     return `${email}-${xForwardedFor}-${ipAddress}`;
   }, // Method to generate custom identifiers for clients.
   skip: async (c) => {
+    if (c.req.path !== "/api/v1/job") return true;
     const body = await c.req.json();
     const secretKey = body?.secretKey || "";
     const skip = secretKey == process.env.SUPER_SECRET_KEY;
@@ -104,7 +110,7 @@ app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
   // Get or create a job queue for the URL
   let queue = jobQueues.get(hash);
   if (!queue) {
-    queue = new Bull<JobData>(hash, REDIS_URL);
+    queue = new Bull<JobData>(hash, REDIS_JOBS_URL);
     queue.process(concurrency, processJob);
     queue.on("drained", () => {
       console.log(`Job queue ${hash} is drained`);
@@ -119,6 +125,9 @@ app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
     removeOnComplete: true,
     removeOnFail: true,
   });
+
+  // increment the total job count and save it to redis
+  await recordJobAndGetCounts();
 
   return c.json(
     { message: "Job added to queue", jobId: job.id, jobHash: hash },
@@ -146,18 +155,168 @@ app.get("/api/v1/queues/count", async (c) => {
 });
 
 app.get("/health", async (c) => {
-  const healthQueue = new Bull<JobData>("health", REDIS_URL);
+  const healthQueue = new Bull<JobData>("health", REDIS_JOBS_URL);
   await healthQueue.process("health", 1, async (job) => {
     return { status: "ok" };
   });
   return c.json({ status: "ok" });
 });
 
+app.get("/total-jobs", async (c) => {
+  const jobCounts = await getJobCounts();
+  return c.json({ jobCounts: JSON.parse(JSON.stringify(jobCounts)) });
+});
+
 // Start the server
 const port = parseInt(process.env.PORT || "3000");
-console.log(`Server is running on http://localhost:${port}`);
 
-serve({
-  fetch: app.fetch,
-  port,
-});
+serve(
+  {
+    fetch: app.fetch,
+    port,
+  },
+  async (info) => {
+    await redisAppClient.connect();
+    console.log(`Listening on http://localhost:${info.port}`);
+  }
+);
+
+interface JobCounts {
+  day: number;
+  week: number;
+  month: number;
+  total: number;
+}
+
+// Define the structure of date formats
+interface DateFormats {
+  day: string;
+  week: string;
+  month: string;
+}
+
+function getDateFormats(): DateFormats {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const date = String(now.getDate()).padStart(2, "0");
+  const weekNumber = getWeekNumber(now);
+
+  return {
+    day: `${year}-${month}-${date}`,
+    week: `${year}-W${weekNumber}`,
+    month: `${year}-${month}`,
+  };
+}
+
+function getWeekNumber(d: Date): string {
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+  }
+  const weekNumber =
+    1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
+  return String(weekNumber).padStart(2, "0");
+}
+
+export async function recordJobAndGetCounts(): Promise<boolean> {
+  const { day, week, month } = getDateFormats();
+  const dayKey = `jobs:day:${day}`;
+  const weekKey = `jobs:week:${week}`;
+  const monthKey = `jobs:month:${month}`;
+  const totalKey = "jobs:total";
+
+  try {
+    // Increment counters for each time period
+    const results = await redisAppClient
+      .multi()
+      .incr(dayKey)
+      .incr(weekKey)
+      .incr(monthKey)
+      .incr(totalKey)
+      .exec();
+
+    if (!results) {
+      throw new Error("Failed to increment counters");
+    }
+
+    // Set expiration for day, week, and month keys
+    await redisAppClient
+      .multi()
+      .expire(dayKey, 86400) // 24 hours
+      .expire(weekKey, 604800) // 7 days
+      .expire(monthKey, 2592000) // 30 days
+      .exec();
+
+    if (!results || results.length < 4) {
+      throw new Error("Failed to increment counters");
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error recording job counts:", error);
+    throw error;
+  }
+}
+
+export async function getJobCounts(): Promise<JobCounts> {
+  const { day, week, month } = getDateFormats();
+  const dayKey = `jobs:day:${day}`;
+  const weekKey = `jobs:week:${week}`;
+  const monthKey = `jobs:month:${month}`;
+  const totalKey = "jobs:total";
+
+  try {
+    const results = await redisAppClient
+      .multi()
+      .get(dayKey)
+      .get(weekKey)
+      .get(monthKey)
+      .get(totalKey)
+      .exec();
+
+    if (
+      !results ||
+      results.some(
+        (result) =>
+          result === null || result === undefined || !Array.isArray(result)
+      )
+    ) {
+      throw new Error("Failed to get counters");
+    }
+
+    return {
+      day:
+        typeof results[0] !== "string" &&
+        results[0] !== null &&
+        results[0] !== undefined
+          ? +results[0]
+          : 0,
+      week:
+        typeof results[1] !== "string" &&
+        results[1] !== null &&
+        results[1] !== undefined
+          ? +results[1]
+          : 0,
+      month:
+        typeof results[2] !== "string" &&
+        results[2] !== null &&
+        results[2] !== undefined
+          ? +results[2]
+          : 0,
+      total:
+        typeof results[3] !== "string" &&
+        results[3] !== null &&
+        results[3] !== undefined
+          ? +results[3]
+          : 0,
+    };
+  } catch (error) {
+    console.error("Error getting job counts:", error);
+    throw error;
+  }
+}
