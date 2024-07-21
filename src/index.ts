@@ -401,7 +401,7 @@ const checkApiKey = async (email: string, apiKey: string) => {
     console.log(`Got data from gumroad: ${JSON.stringify(data, null, 2)}`);
 
     const {
-      status,
+      success,
       purchase: {
         subscription_ended_at,
         subscription_cancelled_at,
@@ -409,7 +409,7 @@ const checkApiKey = async (email: string, apiKey: string) => {
       },
     } = data;
     if (
-      data.status &&
+      success &&
       !subscription_ended_at &&
       !subscription_cancelled_at &&
       !subscription_failed_at
