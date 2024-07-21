@@ -4,9 +4,42 @@ import { zValidator } from "@hono/zod-validator";
 import Bull from "bull";
 import { serve } from "@hono/node-server";
 import { createHash } from "node:crypto";
+import { rateLimiter } from "hono-rate-limiter";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import "dotenv/config";
 
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+
 const app = new Hono();
+
+const limiter = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  limit: 6, // Limit each IP to 6 requests per `window` (here, per 1 minute).
+  standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header,
+  message:
+    "Too many requests, please try again later. Free usage is limited to 6 requests per minute.",
+  keyGenerator: async (c) => {
+    const body = await c.req.json();
+    const email = body?.email || "";
+
+    const xForwardedFor = c.req.header("x-forwarded-for") || "";
+
+    const info = getConnInfo(c);
+    const ipAddress = info.remote.address || "";
+
+    return `${email}-${xForwardedFor}-${ipAddress}`;
+  }, // Method to generate custom identifiers for clients.
+  skip: async (c) => {
+    const body = await c.req.json();
+    const secretKey = body?.secretKey || "";
+    const skip = secretKey == process.env.SUPER_SECRET_KEY;
+    if (skip) console.log(`Skipping rate limit because of super secret key`);
+    return skip;
+  },
+});
+
+// Apply the rate limiting middleware to all requests.
+app.use(limiter);
 
 // Define the request schema
 const requestSchema = z.object({
@@ -60,8 +93,6 @@ const jobHash = (
     .update(concurrency.toString())
     .digest("hex");
 };
-
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
 app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
   const jobData = c.req.valid("json");
