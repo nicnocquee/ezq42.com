@@ -214,6 +214,18 @@ app.get("/total-jobs", async (c) => {
   return c.json({ jobCounts: JSON.parse(JSON.stringify(jobCounts)) });
 });
 
+app.post(`/activate-key`, async (c) => {
+  const { email, apiKey } = await c.req.json();
+  const isValid = await checkApiKey(email, apiKey);
+  if (!isValid) {
+    return c.json({ error: "Invalid API key" }, 401);
+  }
+
+  await redisAppClient.set(`api-key:${email}`, apiKey);
+
+  return c.json({ message: "API key activated" });
+});
+
 // Start the server
 const port = parseInt(PORT || "3000");
 
