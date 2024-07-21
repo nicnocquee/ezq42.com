@@ -79,6 +79,7 @@ async function processJob(job: Bull.Job<JobData>) {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(15 * 1000),
     });
 
     return { status: response.status, url };
