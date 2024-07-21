@@ -48,8 +48,16 @@ async function processJob(job: Bull.Job<JobData>) {
   }
 }
 
-const jobHash = (email: string, payload: JobData["payload"]) => {
-  return createHash("sha256").update(payload.url).update(email).digest("hex");
+const jobHash = (
+  email: string,
+  payload: JobData["payload"],
+  concurrency: number
+) => {
+  return createHash("sha256")
+    .update(payload.url)
+    .update(email)
+    .update(concurrency.toString())
+    .digest("hex");
 };
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
@@ -59,14 +67,19 @@ app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
 
   const { email, payload, concurrency } = jobData;
 
-  const hash = jobHash(email, payload);
+  const hash = jobHash(email, payload, concurrency);
 
   // Get or create a job queue for the URL
   let queue = jobQueues.get(hash);
   if (!queue) {
     queue = new Bull<JobData>(hash, REDIS_URL);
     queue.process(concurrency, processJob);
+    queue.on("drained", () => {
+      jobQueues.delete(hash);
+    });
     jobQueues.set(hash, queue);
+  } else {
+    queue.process(concurrency, processJob);
   }
 
   // Add the job to the queue
