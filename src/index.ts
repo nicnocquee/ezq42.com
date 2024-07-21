@@ -41,8 +41,8 @@ const defaultConfig = {
   skip: async (c) => {
     if (c.req.path !== "/api/v1/job") return true;
     const body = await c.req.json();
-    const secretKey = body?.secretKey || "";
-    const skip = secretKey === SUPER_SECRET_KEY;
+    const apiKey = body?.apiKey || "";
+    const skip = apiKey === SUPER_SECRET_KEY;
     if (skip) console.log(`Skipping rate limit because of super secret key`);
     return skip;
   },
@@ -54,14 +54,14 @@ const paidLimiter = rateLimiter({
   limit: 120,
   keyGenerator: async (c) => {
     const body = await c.req.json();
-    const secretKey = body?.secretKey || "";
-    return secretKey;
+    const apiKey = body?.apiKey || "";
+    return apiKey;
   },
   skip: async (c) => {
     if (c.req.path !== "/api/v1/job") return true;
     const body = await c.req.json();
-    const secretKey = body?.secretKey || "";
-    const skip = secretKey === SUPER_SECRET_KEY;
+    const apiKey = body?.apiKey || "";
+    const skip = apiKey === SUPER_SECRET_KEY;
     if (skip) console.log(`Skipping rate limit because of super secret key`);
     return skip;
   },
@@ -86,8 +86,8 @@ app.use(async (c, next) => {
   }
   const body = await c.req.json();
   const email = body?.email || "";
-  const secretKey = body?.secretKey || "";
-  const isPaid = await checkApiKey(email, secretKey);
+  const apiKey = body?.apiKey || "";
+  const isPaid = await checkApiKey(email, apiKey);
   if (isPaid) {
     return paidLimiter(c, next);
   }
@@ -98,7 +98,7 @@ app.use(async (c, next) => {
 // Define the request schema
 const requestSchema = z.object({
   email: z.string().email(),
-  secretKey: z.string().optional(),
+  apiKey: z.string().optional(),
   delay: z.number().int().nonnegative().default(0),
   concurrency: z.number().int().positive().default(1),
   payload: z.object({
@@ -152,9 +152,9 @@ const jobHash = (
 app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
   const jobData = c.req.valid("json");
 
-  const { email, payload, concurrency, secretKey } = jobData;
+  const { email, payload, concurrency, apiKey } = jobData;
 
-  const isValid = await checkApiKey(email, secretKey || "");
+  const isValid = await checkApiKey(email, apiKey || "");
   if (!isValid) {
     return c.json({ error: "Invalid API key" }, 401);
   }
