@@ -86,6 +86,7 @@ app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
   const job = await queue.add(jobData, {
     delay: jobData.delay * 1000,
     removeOnComplete: true,
+    removeOnFail: true,
   });
 
   return c.json(
