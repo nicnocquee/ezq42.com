@@ -182,10 +182,22 @@ serve(
 );
 
 interface JobCounts {
-  day: number;
-  week: number;
-  month: number;
-  total: number;
+  day: {
+    count: number;
+    lastUpdated: string;
+  };
+  week: {
+    count: number;
+    lastUpdated: string;
+  };
+  month: {
+    count: number;
+    lastUpdated: string;
+  };
+  total: {
+    count: number;
+    lastUpdated: string;
+  };
 }
 
 // Define the structure of date formats
@@ -292,31 +304,30 @@ export async function getJobCounts(): Promise<JobCounts> {
       throw new Error("Failed to get counters");
     }
 
+    const [day, week, month, total] = results as [
+      string,
+      string,
+      string,
+      string
+    ];
+
     return {
-      day:
-        typeof results[0] !== "string" &&
-        results[0] !== null &&
-        results[0] !== undefined
-          ? +results[0]
-          : 0,
-      week:
-        typeof results[1] !== "string" &&
-        results[1] !== null &&
-        results[1] !== undefined
-          ? +results[1]
-          : 0,
-      month:
-        typeof results[2] !== "string" &&
-        results[2] !== null &&
-        results[2] !== undefined
-          ? +results[2]
-          : 0,
-      total:
-        typeof results[3] !== "string" &&
-        results[3] !== null &&
-        results[3] !== undefined
-          ? +results[3]
-          : 0,
+      day: {
+        count: parseInt(day),
+        lastUpdated: dayKey,
+      },
+      week: {
+        count: parseInt(week),
+        lastUpdated: weekKey,
+      },
+      month: {
+        count: parseInt(month),
+        lastUpdated: monthKey,
+      },
+      total: {
+        count: parseInt(total),
+        lastUpdated: totalKey,
+      },
     };
   } catch (error) {
     console.error("Error getting job counts:", error);
