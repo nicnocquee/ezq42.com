@@ -33,6 +33,7 @@ const jobQueues = new Map<string, Bull.Queue<JobData>>();
 // Function to process a job
 async function processJob(job: Bull.Job<JobData>) {
   const { url, method, headers, body } = job.data.payload;
+  console.log(`Processing job ${job.id}`, body);
 
   try {
     const response = await fetch(url, {
@@ -75,11 +76,10 @@ app.post("/api/v1/job", zValidator("json", requestSchema), async (c) => {
     queue = new Bull<JobData>(hash, REDIS_URL);
     queue.process(concurrency, processJob);
     queue.on("drained", () => {
+      console.log(`Job queue ${hash} is drained`);
       jobQueues.delete(hash);
     });
     jobQueues.set(hash, queue);
-  } else {
-    queue.process(concurrency, processJob);
   }
 
   // Add the job to the queue
