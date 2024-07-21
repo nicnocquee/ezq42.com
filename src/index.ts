@@ -48,7 +48,7 @@ const defaultConfig = {
   },
 } satisfies Parameters<typeof rateLimiter>[0];
 
-const limiter = rateLimiter(defaultConfig);
+const freeLimiter = rateLimiter(defaultConfig);
 const paidLimiter = rateLimiter({
   ...defaultConfig,
   limit: 120,
@@ -66,9 +66,24 @@ const paidLimiter = rateLimiter({
     return skip;
   },
 });
+const publicLimiter = rateLimiter({
+  ...defaultConfig,
+  limit: 10,
+  keyGenerator: async (c) => {
+    const xForwardedFor = c.req.header("x-forwarded-for") || "";
+
+    const info = getConnInfo(c);
+    const ipAddress = info.remote.address || "";
+
+    return `${xForwardedFor}-${ipAddress}`;
+  },
+});
 
 // Apply the rate limiting middleware to all requests.
 app.use(async (c, next) => {
+  if (c.req.path !== "/api/v1/job") {
+    return publicLimiter(c, next);
+  }
   const body = await c.req.json();
   const email = body?.email || "";
   const secretKey = body?.secretKey || "";
@@ -77,7 +92,7 @@ app.use(async (c, next) => {
     return paidLimiter(c, next);
   }
 
-  return limiter(c, next);
+  return freeLimiter(c, next);
 });
 
 // Define the request schema
