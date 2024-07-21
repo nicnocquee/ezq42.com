@@ -398,7 +398,7 @@ const checkApiKey = async (email: string, apiKey: string) => {
 
     const data: any = await response.json();
 
-    console.log(`Got data from gumroad: ${JSON.stringify(data)}`);
+    console.log(`Got data from gumroad: ${JSON.stringify(data, null, 2)}`);
 
     const {
       status,
