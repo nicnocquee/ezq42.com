@@ -4,7 +4,7 @@ import { zValidator } from "@hono/zod-validator";
 import Bull from "bull";
 import { serve } from "@hono/node-server";
 import { createHash } from "node:crypto";
-import { rateLimiter } from "hono-rate-limiter";
+import { GeneralConfigType, rateLimiter } from "hono-rate-limiter";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { createClient } from "redis";
 import "dotenv/config";
@@ -17,7 +17,7 @@ redisAppClient.on("error", (err) => console.log("Redis App Client Error", err));
 
 const app = new Hono();
 
-const limiter = rateLimiter({
+const defaultConfig = {
   windowMs: 60 * 1000, // 1 minute
   limit: 6, // Limit each IP to 6 requests per `window` (here, per 1 minute).
   standardHeaders: "draft-6", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header,
@@ -42,10 +42,39 @@ const limiter = rateLimiter({
     if (skip) console.log(`Skipping rate limit because of super secret key`);
     return skip;
   },
+} satisfies Parameters<typeof rateLimiter>[0];
+
+const limiter = rateLimiter(defaultConfig);
+const paidLimiter = rateLimiter({
+  ...defaultConfig,
+  limit: 120,
+  keyGenerator: async (c) => {
+    const body = await c.req.json();
+    const secretKey = body?.secretKey || "";
+    return secretKey;
+  },
+  skip: async (c) => {
+    if (c.req.path !== "/api/v1/job") return true;
+    const body = await c.req.json();
+    const secretKey = body?.secretKey || "";
+    const skip = secretKey == process.env.SUPER_SECRET_KEY;
+    if (skip) console.log(`Skipping rate limit because of super secret key`);
+    return skip;
+  },
 });
 
 // Apply the rate limiting middleware to all requests.
-app.use(limiter);
+app.use(async (c, next) => {
+  const body = await c.req.json();
+  const email = body?.email || "";
+  const secretKey = body?.secretKey || "";
+  const isPaid = await checkApiKey(email, secretKey);
+  if (isPaid) {
+    return paidLimiter(c, next);
+  }
+
+  return limiter(c, next);
+});
 
 // Define the request schema
 const requestSchema = z.object({
