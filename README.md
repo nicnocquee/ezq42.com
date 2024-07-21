@@ -1,6 +1,13 @@
 # About
 
-The background job queue service for serverless functions like Next.js app running on Vercel. You just need to create an API end point or a Route handler in your Next.js app and implement the long running job logic in it. Then you add the job to EZQ42 by specifying the URL to the end point with the data you want to pass to it. EZQ42 will then call the end point along with the data.
+The simple background job queue service for serverless functions like Next.js app running on Vercel.
+
+You just need to
+
+- create an API end point or a Route handler in your Next.js app
+- implement the long running job logic in it.
+- Then you add the job to EZQ42 by specifying the URL to the end point with the data you want to pass to it.
+- EZQ42 will then call the end point along with the data.
 
 Check out the example project [here](https://github.com/nicnocquee/ezq42example).
 
